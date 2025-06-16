@@ -1,0 +1,281 @@
+<!-- MEMO: 중화 양적평형 알킨산추출 -->
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>화학실 시뮬레이션</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+    <style>
+      /* 기본 스타일 */
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+      }
+
+      #mainScreen,
+      #gameScreen {
+        width: 100vw;
+        height: 100vh;
+      }
+
+      #gameScreen {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 툴팁 요소 -->
+    <div class="tooltip" id="tooltip"></div>
+
+    <!-- 메인 화면 -->
+    <div class="main-screen" id="mainScreen">
+      <div class="title-container">
+        <h1 class="main-title">화학실 시뮬레이션</h1>
+        <p class="subtitle">화학 실험을 마음껏 해보세요!</p>
+      </div>
+
+      <div class="menu-container">
+        <button class="start-btn" id="startBtn">실험 시작하기</button>
+        <div class="features">
+          <div class="feature">
+            <span class="feature-icon">🧪</span>
+            <p>다양한 실험 도구</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">⚗️</span>
+            <p>실시간 화학 반응</p>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">🔬</span>
+            <p>실험 결과 분석</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 게임 화면 -->
+    <div id="gameScreen" style="display: none">
+      <div id="experimentArea"></div>
+      <div class="vertical-toolbar">
+        <!-- 기본 조작 모드 -->
+        <button class="tools-button mode-button active" data-mode="move">
+          <span class="tool-icon"
+            ><span class="material-icons">pan_tool</span></span
+          >
+        </button>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- 실험 컨트롤 -->
+        <button class="tools-button" data-action="speed">
+          <span class="tool-icon"
+            ><span class="material-icons">speed</span></span
+          >
+        </button>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- 관찰 도구 -->
+        <button class="tools-button" data-action="zoom">
+          <span class="tool-icon"
+            ><span class="material-icons">zoom_in</span></span
+          >
+        </button>
+        <button class="tools-button" data-action="zoom-out">
+          <span class="tool-icon"
+            ><span class="material-icons">zoom_out</span></span
+          >
+        </button>
+
+        <!-- 도구 선택 버튼 -->
+        <div class="toolbar-divider"></div>
+        <button class="tools-button" id="toolsButton">
+          <span class="tool-icon"
+            ><span class="material-icons">science</span></span
+          >
+        </button>
+      </div>
+
+      <!-- pH 측정 결과 패널 -->
+      <div id="phPanel" class="measurement-panel" style="display: none">
+        <div class="panel-header">
+          <h3>pH 측정</h3>
+          <button class="close-panel" id="closePhPanel">&times;</button>
+        </div>
+        <div class="panel-content">
+          <div class="ph-display">
+            <div class="ph-value">pH: <span id="phValue">--.--</span></div>
+            <div class="ph-scale">
+              <div class="scale-gradient"></div>
+              <div class="scale-markers">
+                <div class="scale-marker acid">산성</div>
+                <div class="scale-marker neutral">중성</div>
+                <div class="scale-marker base">염기성</div>
+              </div>
+            </div>
+          </div>
+          <div class="measurement-info">
+            <div class="info-row">
+              <span class="info-label">온도:</span>
+              <span id="temperature">25°C</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">보정 상태:</span>
+              <span id="calibrationStatus">보정됨</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="toolsModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>실험 도구 선택</h2>
+            <span class="close">&times;</span>
+          </div>
+          <div class="tool-categories">
+            <div class="category">
+              <h3>부피 측정 도구</h3>
+              <div class="tool-items">
+                <div class="tool-item" data-tool="volumetric-flask">
+                  <span class="tool-icon">🧪</span>
+                  <span class="tool-name">부피 플라스크</span>
+                  <span class="tool-desc">250ml</span>
+                </div>
+                <div class="tool-item" data-tool="burette">
+                  <span class="tool-icon">📏</span>
+                  <span class="tool-name">뷰렛</span>
+                  <span class="tool-desc">50ml</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="category">
+              <h3>반응 용기</h3>
+              <div class="tool-items">
+                <div class="tool-item" data-tool="beaker">
+                  <span class="tool-icon">🧪</span>
+                  <span class="tool-name">비커</span>
+                  <span class="tool-desc">100ml</span>
+                </div>
+                <div class="tool-item" data-tool="beaker-250">
+                  <span class="tool-icon">🧪</span>
+                  <span class="tool-name">비커</span>
+                  <span class="tool-desc">250ml</span>
+                </div>
+                <div class="tool-item" data-tool="flask">
+                  <span class="tool-icon">⚗️</span>
+                  <span class="tool-name">삼각 플라스크</span>
+                  <span class="tool-desc">250ml</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="category">
+              <h3>시약</h3>
+              <div class="tool-items">
+                <div class="tool-item" data-tool="naoh">
+                  <span class="tool-icon">🧪</span>
+                  <span class="tool-name">수산화나트륨</span>
+                  <span class="tool-desc">0.1M NaOH</span>
+                </div>
+                <div class="tool-item" data-tool="hcl">
+                  <span class="tool-icon">🧪</span>
+                  <span class="tool-name">염산</span>
+                  <span class="tool-desc">농도 미지의 HCl</span>
+                </div>
+                <div class="tool-item" data-tool="phenolphthalein">
+                  <span class="tool-icon">💧</span>
+                  <span class="tool-name">페놀프탈레인</span>
+                  <span class="tool-desc">지시약</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="category">
+              <h3>측정 도구</h3>
+              <div class="tool-items">
+                <div class="tool-item" data-tool="ph-meter">
+                  <span class="tool-icon">📊</span>
+                  <span class="tool-name">pH 미터</span>
+                  <span class="tool-desc">0-14 pH</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 시약 추가 모달 -->
+    <div id="volumeInputModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="volumeModalTitle"></h2>
+          <span class="close" id="closeVolumeInput">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="input-group">
+            <label>용량 (mL):</label>
+            <input
+              type="number"
+              id="volumeInput"
+              min="0"
+              max="1000"
+              step="1"
+              value="10"
+            />
+          </div>
+          <p class="modal-instruction">용량을 입력한 후 용기를 클릭하세요</p>
+        </div>
+        <div class="modal-footer">
+          <button id="cancelVolumeInput" class="button">취소</button>
+          <button id="confirmVolumeInput" class="button primary">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 속도 조절 모달 -->
+    <div id="speedModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>실험 속도 조절</h2>
+          <span class="close" id="closeSpeedModal">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="speed-options">
+            <div class="speed-slider-container">
+              <div class="speed-value">1x</div>
+              <input
+                type="range"
+                class="speed-slider"
+                min="0.1"
+                max="4"
+                step="0.1"
+                value="1"
+              />
+              <div class="speed-labels">
+                <span>0.1x</span>
+                <span>4x</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="cancelSpeedInput" class="button">취소</button>
+          <button id="confirmSpeedInput" class="button primary">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/konva/8.4.3/konva.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
