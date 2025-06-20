@@ -95,19 +95,15 @@ document.addEventListener("DOMContentLoaded", () => {
     stage.position(newPos);
     stage.batchDraw();
 
-    // 초기 실험 도구 설정
-    // 250mL 비커 생성
-    const beaker = createTool("volumetric-flask", centerX - 100, centerY);
-    const burette = createTool("burette", centerX + 100, centerY);
+    // 스테이지 이동 시 반응 버튼들도 함께 이동
+    stage.on("dragmove", () => {
+      updateAllReactionButtons();
+    });
 
-    console.log(beaker);
-    console.log(burette);
-    // 용액 자동 추가
-    setTimeout(() => {
-      // beaker.container.addSolution("phenolphthalein", 1);
-      beaker.container.addSolution("naoh", 10);
-      burette.container.addSolution("hcl", 10);
-    }, 100);
+    // 줌 변경 시에도 버튼 위치 업데이트
+    stage.on("scalechange", () => {
+      updateAllReactionButtons();
+    });
   }
 
   // 시작 버튼 클릭 이벤트
@@ -203,15 +199,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const SOLUTIONS = {
     naoh: {
       name: "NaOH",
-      concentration: 0.1, // 0.1M
       color: "rgba(220, 230, 240, 0.85)", // 살짝 푸른 빛이 도는 무색
       type: "base",
       mw: 40, // g/mol (NaOH의 분자량)
     },
     hcl: {
       name: "HCl",
-      concentration: 0.1,
-      color: "rgba(240, 235, 220, 0.85)", // 살짝 노란 빛이 도는 무색
+      color: "rgba(240, 235, 220, 0.85)", // 살짝 노간 빛이 도는 무색
       type: "acid",
       mw: 36.46, // g/mol (HCl의 분자량)
     },
@@ -234,8 +228,279 @@ document.addEventListener("DOMContentLoaded", () => {
     },
   };
 
+  // 고체 물질 관련 상수
+  const SOLIDS = {
+    caco3: {
+      name: "탄산칼슘",
+      color: "#f5f5dc", // 베이지색
+      type: "solid",
+      mw: 100.09, // g/mol (CaCO3의 분자량)
+      density: 2.71, // g/cm³
+    },
+  };
+
   // 현재 선택된 시약 정보를 저장할 변수
   let selectedSolution = null;
+  let selectedSolid = null;
+  let selectedSolidMass = 0;
+  let selectedConcentration = 0; // 선택된 용액의 농도
+  let reactionButtons = new Map(); // 반응 버튼 관리
+
+  // 반응 버튼 생성 함수
+  function createReactionButton(solidShape, beakerShape) {
+    // 이미 버튼이 있다면 제거
+    removeReactionButton(solidShape);
+
+    // 버튼 생성
+    const button = document.createElement("button");
+    button.className = "reaction-button";
+    button.textContent = "반응하기";
+    button.style.position = "fixed"; // absolute 대신 fixed 사용
+    button.style.zIndex = "1000";
+    button.style.padding = "8px 12px";
+    button.style.backgroundColor = "#4CAF50";
+    button.style.color = "white";
+    button.style.border = "none";
+    button.style.borderRadius = "4px";
+    button.style.cursor = "pointer";
+    button.style.fontSize = "12px";
+    button.style.fontWeight = "bold";
+    button.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+    button.style.width = "70px"; // 명시적 너비 설정
+    button.style.textAlign = "center";
+
+    // 호버 효과
+    button.addEventListener("mouseenter", () => {
+      button.style.backgroundColor = "#45a049";
+    });
+    button.addEventListener("mouseleave", () => {
+      button.style.backgroundColor = "#4CAF50";
+    });
+
+    // 반응 처리
+    button.addEventListener("click", () => {
+      performReaction(solidShape, beakerShape);
+    });
+
+    // 실험 영역에 추가 (body 대신)
+    experimentArea.appendChild(button);
+
+    // Map에 저장
+    reactionButtons.set(solidShape, { button, beaker: beakerShape });
+
+    // 초기 위치 설정
+    updateReactionButtonPosition(solidShape, beakerShape, button);
+  }
+
+  // 반응 버튼 위치 업데이트 함수
+  function updateReactionButtonPosition(
+    solidShape,
+    beakerShape,
+    button = null
+  ) {
+    const buttonData = reactionButtons.get(solidShape);
+    if (!buttonData && !button) return;
+
+    const targetButton = button || buttonData.button;
+    if (!targetButton) return;
+
+    try {
+      // Konva의 getClientRect로 실제 화면상 위치 계산
+      const beakerRect = beakerShape.getClientRect();
+
+      // 버튼을 비커 바로 아래 중앙에 배치
+      const buttonX = beakerRect.x + beakerRect.width / 2 - 35; // 버튼 중앙 정렬
+      const buttonY = beakerRect.y + beakerRect.height + 10; // 비커 아래 10px 간격
+
+      targetButton.style.left = `${buttonX}px`;
+      targetButton.style.top = `${buttonY}px`;
+
+      console.log(`Beaker rect:`, beakerRect);
+      console.log(`Button position: ${buttonX}, ${buttonY}`);
+    } catch (error) {
+      console.error("Error updating button position:", error);
+
+      // 실패시 간단한 방법으로 계산
+      try {
+        const beakerPos = beakerShape.absolutePosition();
+        const simpleX = beakerPos.x - 35;
+        const simpleY = beakerPos.y + 80;
+
+        targetButton.style.left = `${simpleX}px`;
+        targetButton.style.top = `${simpleY}px`;
+      } catch (fallbackError) {
+        console.error("Fallback positioning also failed:", fallbackError);
+      }
+    }
+  }
+
+  // 모든 반응 버튼 위치 업데이트
+  function updateAllReactionButtons() {
+    reactionButtons.forEach((buttonData, solidShape) => {
+      if (solidShape.snapTarget) {
+        updateReactionButtonPosition(solidShape, solidShape.snapTarget);
+      }
+    });
+  }
+
+  // 반응 버튼 제거 함수
+  function removeReactionButton(solidShape) {
+    const buttonData = reactionButtons.get(solidShape);
+    if (buttonData) {
+      buttonData.button.remove();
+      reactionButtons.delete(solidShape);
+    }
+  }
+
+  // 화학 반응 수행 함수
+  function performReaction(solidShape, beakerShape) {
+    const container = beakerShape.container;
+    if (!container || container.contents.length === 0) {
+      alert("비커에 반응할 용액이 없습니다.");
+      return;
+    }
+
+    // CaCO3의 현재 질량 가져오기
+    const massText = solidShape.findOne("Text");
+    if (!massText) return;
+
+    let currentMass = parseFloat(massText.text().replace("g", ""));
+    if (currentMass <= 0) {
+      alert("탄산칼슘이 모두 소모되었습니다.");
+      return;
+    }
+
+    // 산성 용액 찾기 (HCl)
+    const acidSolution = container.contents.find(
+      (content) =>
+        SOLUTIONS[content.type] && SOLUTIONS[content.type].type === "acid"
+    );
+
+    if (!acidSolution) {
+      alert("산성 용액이 없어 반응할 수 없습니다.");
+      return;
+    }
+
+    // 반응 계산: CaCO3 + 2HCl → CaCl2 + H2O + CO2
+    const caco3MW = SOLIDS.caco3.mw; // 100.09 g/mol
+    const hclMW = SOLUTIONS.hcl.mw; // 36.46 g/mol
+    const co2MW = 44.01; // g/mol
+
+    // 현재 CaCO3의 몰 수 (더 정밀한 계산)
+    const caco3Moles = currentMass / caco3MW;
+
+    // 현재 HCl의 몰 수 (더 정밀한 계산)
+    const hclMoles = (acidSolution.volume / 1000) * acidSolution.concentration;
+
+    console.log(`CaCO3 몰수: ${caco3Moles}, HCl 몰수: ${hclMoles}`);
+
+    // 제한 반응물 결정 (CaCO3 1몰당 HCl 2몰 필요)
+    const maxReactionMoles = Math.min(caco3Moles, hclMoles / 2);
+
+    if (maxReactionMoles <= 1e-8) {
+      // 더 작은 임계값 사용
+      alert("반응할 수 있는 물질이 부족합니다.");
+      return;
+    }
+
+    // 반응 후 남은 물질 계산 (정밀도 개선)
+    const remainingCaCO3Moles = Math.max(0, caco3Moles - maxReactionMoles);
+    const remainingHClMoles = Math.max(0, hclMoles - maxReactionMoles * 2);
+
+    // 생성된 CO2의 질량 (기체로 빠져나감)
+    const co2Mass = maxReactionMoles * co2MW;
+
+    // CaCO3 질량 업데이트
+    const newCaCO3Mass = remainingCaCO3Moles * caco3MW;
+
+    console.log(`새로운 CaCO3 질량: ${newCaCO3Mass}g`);
+
+    // 더 작은 임계값으로 완전 소모 판단
+    if (newCaCO3Mass < 0.001 || remainingCaCO3Moles < 1e-8) {
+      // 탄산칼슘이 거의 다 소모됨
+      removeReactionButton(solidShape);
+      solidShape.destroy();
+      layer.batchDraw();
+      alert(
+        `반응 완료! ${co2Mass.toFixed(
+          3
+        )}g의 CO2가 발생했습니다. 탄산칼슘이 모두 소모되었습니다.`
+      );
+      return; // 함수 종료
+    } else {
+      // 질량 텍스트 업데이트 (더 정밀한 표시)
+      if (newCaCO3Mass < 0.01) {
+        massText.text(`${newCaCO3Mass.toFixed(3)}g`);
+      } else {
+        massText.text(`${newCaCO3Mass.toFixed(2)}g`);
+      }
+      alert(`반응 진행! ${co2Mass.toFixed(3)}g의 CO2가 발생했습니다.`);
+    }
+
+    // 용액 업데이트 (정밀도 개선)
+    if (remainingHClMoles > 1e-6) {
+      // 임계값을 더 크게 조정
+      // HCl이 남은 경우 - 더 정확한 부피 계산
+      const newVolume = (remainingHClMoles * 1000) / acidSolution.concentration;
+      acidSolution.volume = newVolume;
+      console.log(`남은 HCl 부피: ${acidSolution.volume}mL`);
+
+      // 부피가 너무 작으면 (0.1mL 이하) 완전 제거
+      if (acidSolution.volume <= 0.1) {
+        const index = container.contents.indexOf(acidSolution);
+        container.contents.splice(index, 1);
+        console.log("HCl 미량 잔여분 제거됨");
+      }
+    } else {
+      // HCl이 모두 소모된 경우 또는 매우 미량 남은 경우
+      const index = container.contents.indexOf(acidSolution);
+      container.contents.splice(index, 1);
+      console.log("HCl 완전 소모됨");
+    }
+
+    // CaCl2 생성 (염으로 추가)
+    container.contents.push({
+      type: "nacl", // CaCl2 대신 NaCl 타입 사용 (기존 시스템과 호환)
+      volume: maxReactionMoles * 10, // 대략적인 부피 증가
+      concentration: 0,
+    });
+
+    // 반응 후 추가 검사: HCl이 0.1mL 이하 남았으면 완전 제거
+    const remainingAcid = container.contents.find(
+      (content) =>
+        SOLUTIONS[content.type] && SOLUTIONS[content.type].type === "acid"
+    );
+
+    if (remainingAcid && remainingAcid.volume <= 0.1) {
+      const index = container.contents.indexOf(remainingAcid);
+      container.contents.splice(index, 1);
+      console.log("반응 후 HCl 미량 잔여분 강제 제거됨");
+    }
+
+    // 총 부피 재계산
+    container.currentVolume = container.contents.reduce(
+      (sum, content) => sum + content.volume,
+      0
+    );
+    container.updateColor();
+
+    // 시각적 업데이트
+    const liquid = beakerShape.findOne(".liquid");
+    if (liquid) {
+      const fillHeight =
+        (container.currentVolume / container.capacity) * liquid.usableHeight;
+      liquid.height(fillHeight);
+      liquid.y(liquid.liquidStartY - fillHeight);
+      liquid.fill(container.color);
+    }
+
+    const infoText = beakerShape.findOne(".infoText");
+    if (infoText) {
+      infoText.text(container.getContentsInfo());
+    }
+
+    layer.batchDraw();
+  }
 
   // 용액을 담을 수 있는 컨테이너 클래스
   class Container {
@@ -292,7 +557,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 용액 추가
-    addSolution(solution, volume) {
+    addSolution(solution, volume, concentration) {
       if (solution === "phenolphthalein") {
         this.hasIndicator = true;
         this.updateColor();
@@ -335,10 +600,8 @@ document.addEventListener("DOMContentLoaded", () => {
         ) {
           // 반응물의 몰 수 계산
           const existingMoles =
-            (existingSolution.volume / 1000) *
-            SOLUTIONS[existingSolution.type].concentration;
-          const newMoles =
-            (roundedVolume / 1000) * SOLUTIONS[solution].concentration;
+            (existingSolution.volume / 1000) * existingSolution.concentration;
+          const newMoles = (roundedVolume / 1000) * concentration;
 
           // 반응 후 남은 용액 계산
           if (existingMoles > newMoles) {
@@ -348,12 +611,13 @@ document.addEventListener("DOMContentLoaded", () => {
               {
                 type: existingSolution.type,
                 volume:
-                  (remainingMoles * 1000) /
-                  SOLUTIONS[existingSolution.type].concentration,
+                  (remainingMoles * 1000) / existingSolution.concentration,
+                concentration: existingSolution.concentration,
               },
               {
                 type: "nacl",
                 volume: roundedVolume,
+                concentration: 0,
               },
             ];
           } else if (existingMoles < newMoles) {
@@ -362,12 +626,13 @@ document.addEventListener("DOMContentLoaded", () => {
             this.contents = [
               {
                 type: solution,
-                volume:
-                  (remainingMoles * 1000) / SOLUTIONS[solution].concentration,
+                volume: (remainingMoles * 1000) / concentration,
+                concentration: concentration,
               },
               {
                 type: "nacl",
                 volume: existingSolution.volume,
+                concentration: 0,
               },
             ];
           } else {
@@ -376,6 +641,7 @@ document.addEventListener("DOMContentLoaded", () => {
               {
                 type: "nacl",
                 volume: roundedVolume,
+                concentration: 0,
               },
             ];
           }
@@ -384,6 +650,7 @@ document.addEventListener("DOMContentLoaded", () => {
           this.contents.push({
             type: solution,
             volume: roundedVolume,
+            concentration: concentration || 0,
           });
         }
       } else {
@@ -391,6 +658,7 @@ document.addEventListener("DOMContentLoaded", () => {
         this.contents.push({
           type: solution,
           volume: roundedVolume,
+          concentration: concentration || 0,
         });
       }
 
@@ -496,12 +764,12 @@ document.addEventListener("DOMContentLoaded", () => {
             );
           };
 
-          const getMoles = (volume, type) => {
-            return (volume / 1000) * SOLUTIONS[type].concentration;
+          const getMoles = (volume, solutionObj) => {
+            return (volume / 1000) * solutionObj.concentration;
           };
 
           // 현재 부어지는 용액의 몰 수
-          const pouringMoles = getMoles(actualPourAmount, currentSolution.type);
+          const pouringMoles = getMoles(actualPourAmount, currentSolution);
 
           // 대상 용기의 모든 용액 처리
           let remainingPourMoles = pouringMoles;
@@ -512,7 +780,7 @@ document.addEventListener("DOMContentLoaded", () => {
           for (let i = 0; i < newContents.length; i++) {
             const targetSol = newContents[i];
             if (isAcidBase(currentSolution.type, targetSol.type)) {
-              const targetMoles = getMoles(targetSol.volume, targetSol.type);
+              const targetMoles = getMoles(targetSol.volume, targetSol);
 
               if (targetMoles > remainingPourMoles) {
                 // 기존 용액이 더 많은 경우
@@ -520,13 +788,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 newContents[i] = {
                   type: targetSol.type,
                   volume:
-                    (remainingTargetMoles * 1000) /
-                    SOLUTIONS[targetSol.type].concentration,
+                    (remainingTargetMoles * 1000) / targetSol.concentration,
+                  concentration: targetSol.concentration,
                 };
                 // NaCl 추가
                 newContents.push({
                   type: "nacl",
                   volume: actualPourAmount,
+                  concentration: 0,
                 });
                 remainingPourMoles = 0;
               } else {
@@ -536,6 +805,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 newContents[i] = {
                   type: "nacl",
                   volume: targetSol.volume,
+                  concentration: 0,
                 };
               }
               reactionOccurred = true;
@@ -548,8 +818,8 @@ document.addEventListener("DOMContentLoaded", () => {
             newContents.push({
               type: currentSolution.type,
               volume:
-                (remainingPourMoles * 1000) /
-                SOLUTIONS[currentSolution.type].concentration,
+                (remainingPourMoles * 1000) / currentSolution.concentration,
+              concentration: currentSolution.concentration,
             });
           }
 
@@ -833,6 +1103,59 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         break;
 
+      case "caco3":
+        shape = new Konva.Group({
+          x: x,
+          y: y,
+          draggable: true,
+          name: "tool",
+        });
+
+        // 탄산칼슘 고체 (분말 형태로 표현)
+        const caco3Body = new Konva.Circle({
+          x: 0,
+          y: 0,
+          radius: 15,
+          fill: SOLIDS.caco3.color,
+          stroke: "#8B7355",
+          strokeWidth: 2,
+          opacity: 1.0, // 완전 불투명
+        });
+
+        // 분말 효과를 위한 작은 점들
+        for (let i = 0; i < 8; i++) {
+          const dot = new Konva.Circle({
+            x: (Math.random() - 0.5) * 20,
+            y: (Math.random() - 0.5) * 20,
+            radius: 1,
+            fill: "#8B7355",
+            opacity: 1.0, // 완전 불투명
+          });
+          shape.add(dot);
+        }
+
+        // 질량 정보 표시
+        const massText = new Konva.Text({
+          x: -25,
+          y: 20,
+          text: `${selectedSolidMass}g`,
+          fontSize: 10,
+          fill: "#333333",
+          align: "center",
+          width: 50,
+        });
+
+        shape.add(caco3Body);
+        shape.add(massText);
+
+        // 실제 크기 계산
+        const caco3Bbox = shape.getClientRect();
+        shape.offset({
+          x: caco3Bbox.width / 2,
+          y: caco3Bbox.height / 2,
+        });
+        break;
+
       case "burette":
         const offsetY = -200;
         shape = new Konva.Group({
@@ -1097,9 +1420,85 @@ document.addEventListener("DOMContentLoaded", () => {
           shape.snappedBeaker.absolutePosition(snapPosition);
         }
 
+        // 탄산칼슘을 드래그하는 경우 비커에 스냅
+        if (shape.name() === "tool" && !shape.container) {
+          // 모든 비커 찾기
+          layer.children.forEach((other) => {
+            if (
+              other !== shape &&
+              other.container &&
+              BEAKER_TYPES.includes(other.container.type)
+            ) {
+              // 비커의 위치와 크기
+              const beakerPos = other.absolutePosition();
+              const beakerBounds = other.getClientRect();
+
+              // 탄산칼슘의 현재 위치
+              const solidPos = shape.absolutePosition();
+
+              // 비커 상단 중앙 위치 계산
+              const beakerTopCenter = {
+                x: beakerPos.x + 30,
+                y: beakerPos.y - 30, // 비커 위쪽 30px
+              };
+
+              // 탄산칼슘과 비커 상단 중앙 사이의 거리 계산
+              const distance = Math.sqrt(
+                Math.pow(solidPos.x - beakerTopCenter.x, 2) +
+                  Math.pow(solidPos.y - beakerTopCenter.y, 2)
+              );
+
+              // 스냅 거리 내에 있으면 자동으로 붙이기
+              if (distance < 60) {
+                console.log("Snapping solid to beaker top");
+
+                // 탄산칼슘을 비커 위에 위치시키기
+                shape.absolutePosition(beakerTopCenter);
+                shape.snapTarget = other;
+
+                // 반응하기 버튼 생성
+                createReactionButton(shape, other);
+
+                // 시각적 피드백
+                shape.getLayer().batchDraw();
+
+                // 버튼 위치 즉시 업데이트
+                setTimeout(() => {
+                  updateReactionButtonPosition(shape, other);
+                }, 10);
+
+                return false;
+              } else if (shape.snapTarget === other) {
+                // 스냅 해제 - 버튼 삭제
+                removeReactionButton(shape);
+                shape.snapTarget = null;
+              }
+            }
+          });
+        }
+
         // 비커류를 드래그하는 경우의 기존 로직
         if (shape.container && BEAKER_TYPES.includes(shape.container.type)) {
           console.log("Dragging beaker"); // 디버깅
+
+          // 비커에 스냅된 탄산칼슘 찾기
+          const snappedSolid = layer.children.find(
+            (child) =>
+              child !== shape && !child.container && child.snapTarget === shape
+          );
+
+          // 스냅된 탄산칼슘이 있으면 같이 이동
+          if (snappedSolid) {
+            const beakerPos = shape.absolutePosition();
+            const solidSnapPosition = {
+              x: beakerPos.x + 30,
+              y: beakerPos.y - 30, // 비커 위쪽 30px
+            };
+            snappedSolid.absolutePosition(solidSnapPosition);
+
+            // 반응 버튼도 함께 이동
+            updateReactionButtonPosition(snappedSolid, shape);
+          }
 
           // 모든 뷰렛 찾기
           layer.children.forEach((other) => {
@@ -1175,6 +1574,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 shape.absolutePosition(snapPosition);
                 shape.snapTarget = other;
 
+                // 스냅된 탄산칼슘도 함께 이동
+                if (snappedSolid) {
+                  const solidSnapPosition = {
+                    x: snapPosition.x + shape.width() / 2,
+                    y: snapPosition.y - 30,
+                  };
+                  snappedSolid.absolutePosition(solidSnapPosition);
+                }
+
                 // 시각적 피드백
                 shape.getLayer().batchDraw();
                 return false; // forEach 루프 중단
@@ -1211,6 +1619,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       layer.add(shape);
       layer.draw();
+
+      // 탄산칼슘인 경우 최상단으로 이동하여 다른 요소들 위에 표시
+      if (type === "caco3") {
+        shape.moveToTop();
+        layer.draw();
+      }
+
       return shape; // shape 반환 추가
     }
   }
@@ -1224,6 +1639,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (SOLUTIONS[type]) {
         selectedSolution = type;
         showVolumeInputModal();
+      } else if (SOLIDS[type]) {
+        selectedSolid = type;
+        showMassInputModal();
       } else {
         // 현재 보이는 화면의 중앙 좌표 계산
         const containerRect = stage.container().getBoundingClientRect();
@@ -1251,12 +1669,50 @@ document.addEventListener("DOMContentLoaded", () => {
     const volumeInputModal = document.getElementById("volumeInputModal");
     const volumeTitle = document.getElementById("volumeModalTitle");
     const volumeInput = document.getElementById("volumeInput");
+    const volumeInputLabel = document.getElementById("volumeInputLabel");
+    const modalInstruction = document.getElementById("modalInstruction");
+    const concentrationGroup = document.getElementById("concentrationGroup");
+    const concentrationInput = document.getElementById("concentrationInput");
 
     // 모달 제목 설정
     volumeTitle.textContent = `${SOLUTIONS[selectedSolution].name} 추가`;
 
+    // 라벨과 지시문 설정
+    volumeInputLabel.textContent = "용량 (mL):";
+    modalInstruction.textContent = "용량과 농도를 입력한 후 용기를 클릭하세요";
+
+    // 농도 입력 필드 표시
+    concentrationGroup.style.display = "block";
+
     // 입력값 초기화
     volumeInput.value = "10";
+    concentrationInput.value = "1";
+
+    // 모달 표시
+    volumeInputModal.style.display = "block";
+  }
+
+  // 질량 입력 모달 표시
+  function showMassInputModal() {
+    const volumeInputModal = document.getElementById("volumeInputModal");
+    const volumeTitle = document.getElementById("volumeModalTitle");
+    const volumeInput = document.getElementById("volumeInput");
+    const volumeInputLabel = document.getElementById("volumeInputLabel");
+    const modalInstruction = document.getElementById("modalInstruction");
+    const concentrationGroup = document.getElementById("concentrationGroup");
+
+    // 모달 제목 설정
+    volumeTitle.textContent = `${SOLIDS[selectedSolid].name} 추가`;
+
+    // 라벨과 지시문 변경
+    volumeInputLabel.textContent = "질량 (g):";
+    modalInstruction.textContent = "질량을 입력한 후 확인을 클릭하세요";
+
+    // 농도 입력 필드 숨기기
+    concentrationGroup.style.display = "none";
+
+    // 입력값 초기화
+    volumeInput.value = "5";
 
     // 모달 표시
     volumeInputModal.style.display = "block";
@@ -1266,21 +1722,48 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("closeVolumeInput").addEventListener("click", () => {
     document.getElementById("volumeInputModal").style.display = "none";
     selectedSolution = null;
+    selectedSolid = null;
   });
 
   document.getElementById("cancelVolumeInput").addEventListener("click", () => {
     document.getElementById("volumeInputModal").style.display = "none";
     selectedSolution = null;
+    selectedSolid = null;
   });
 
   document
     .getElementById("confirmVolumeInput")
     .addEventListener("click", () => {
-      const volume = parseFloat(document.getElementById("volumeInput").value);
-      if (volume > 0) {
-        enableContainerSelection(volume);
-        document.getElementById("volumeInputModal").style.display = "none";
-        document.body.style.cursor = "crosshair"; // 커서 스타일 변경
+      const value = parseFloat(document.getElementById("volumeInput").value);
+      if (value > 0) {
+        if (selectedSolution) {
+          // 용액 추가 - 농도도 함께 가져오기
+          const concentrationValue = parseFloat(
+            document.getElementById("concentrationInput").value
+          );
+          if (concentrationValue >= 0) {
+            selectedConcentration = concentrationValue;
+            enableContainerSelection(value);
+            document.getElementById("volumeInputModal").style.display = "none";
+            document.body.style.cursor = "crosshair"; // 커서 스타일 변경
+          } else {
+            alert("올바른 농도를 입력해주세요.");
+            return;
+          }
+        } else if (selectedSolid) {
+          // 고체 생성
+          selectedSolidMass = value;
+          const containerRect = stage.container().getBoundingClientRect();
+          const viewportCenterX = containerRect.width / 2;
+          const viewportCenterY = containerRect.height / 2;
+          const centerX = (viewportCenterX - stage.x()) / stage.scaleX();
+          const centerY = (viewportCenterY - stage.y()) / stage.scaleX();
+
+          createTool(selectedSolid, centerX, centerY);
+          document.getElementById("volumeInputModal").style.display = "none";
+          selectedSolid = null;
+          selectedSolidMass = 0;
+        }
       }
     });
 
@@ -1342,8 +1825,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
           // 용량 체크
           if (container.currentVolume + volume <= container.capacity) {
-            // 시약 추가
-            container.addSolution(selectedSolution, volume);
+            // 시약 추가 - 사용자가 입력한 농도 사용
+            container.addSolution(
+              selectedSolution,
+              volume,
+              selectedConcentration
+            );
 
             // 시각적 업데이트
             const liquid = group.findOne(".liquid");
@@ -1395,6 +1882,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
           document.body.style.cursor = "default";
           selectedSolution = null;
+          selectedConcentration = 0;
         }
       }
     };
@@ -1495,6 +1983,9 @@ document.addEventListener("DOMContentLoaded", () => {
       stage.scale({ x: newScale, y: newScale });
       stage.position(newPos);
       stage.batchDraw();
+
+      // 반응 버튼 위치 업데이트
+      updateAllReactionButtons();
     });
 
   // 줌아웃 버튼 클릭
@@ -1525,6 +2016,9 @@ document.addEventListener("DOMContentLoaded", () => {
       stage.scale({ x: newScale, y: newScale });
       stage.position(newPos);
       stage.batchDraw();
+
+      // 반응 버튼 위치 업데이트
+      updateAllReactionButtons();
     });
 
   // 마우스 휠 줌
@@ -1558,6 +2052,9 @@ document.addEventListener("DOMContentLoaded", () => {
       stage.scale({ x: newScale, y: newScale });
       stage.position(newPos);
       stage.batchDraw();
+
+      // 반응 버튼 위치 업데이트
+      updateAllReactionButtons();
     });
   }
 

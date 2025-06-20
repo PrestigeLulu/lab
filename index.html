@@ -183,17 +183,22 @@
                 <div class="tool-item" data-tool="naoh">
                   <span class="tool-icon">🧪</span>
                   <span class="tool-name">수산화나트륨</span>
-                  <span class="tool-desc">0.1M NaOH</span>
+                  <span class="tool-desc">NaOH 용액</span>
                 </div>
                 <div class="tool-item" data-tool="hcl">
                   <span class="tool-icon">🧪</span>
                   <span class="tool-name">염산</span>
-                  <span class="tool-desc">농도 미지의 HCl</span>
+                  <span class="tool-desc">HCl 용액</span>
                 </div>
                 <div class="tool-item" data-tool="phenolphthalein">
                   <span class="tool-icon">💧</span>
                   <span class="tool-name">페놀프탈레인</span>
                   <span class="tool-desc">지시약</span>
+                </div>
+                <div class="tool-item" data-tool="caco3">
+                  <span class="tool-icon">🧂</span>
+                  <span class="tool-name">탄산칼슘</span>
+                  <span class="tool-desc">고체 분말</span>
                 </div>
               </div>
             </div>
@@ -222,7 +227,7 @@
         </div>
         <div class="modal-body">
           <div class="input-group">
-            <label>용량 (mL):</label>
+            <label id="volumeInputLabel">용량 (mL):</label>
             <input
               type="number"
               id="volumeInput"
@@ -232,7 +237,24 @@
               value="10"
             />
           </div>
-          <p class="modal-instruction">용량을 입력한 후 용기를 클릭하세요</p>
+          <div
+            class="input-group"
+            id="concentrationGroup"
+            style="display: none"
+          >
+            <label>농도 (M):</label>
+            <input
+              type="number"
+              id="concentrationInput"
+              min="0"
+              max="10"
+              step="0.01"
+              value="0.1"
+            />
+          </div>
+          <p class="modal-instruction" id="modalInstruction">
+            용량을 입력한 후 용기를 클릭하세요
+          </p>
         </div>
         <div class="modal-footer">
           <button id="cancelVolumeInput" class="button">취소</button>
